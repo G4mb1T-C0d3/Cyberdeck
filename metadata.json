@@ -1,0 +1,6 @@
+{
+  "name": "Remmy's Cyberdeck",
+  "description": "A retro-futuristic cyberpunk system utility deck with a sassy AI companion.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["AI-powered dialogue", "System simulation"]
+}
