@@ -165,6 +165,12 @@ export const DaemonPopup: React.FC<DaemonPopupProps> = ({ onClose }) => {
                   Reverse shell trace deleted.
                 </div>
               </div>
+              <button 
+                onClick={onClose}
+                className="mt-4 px-8 py-2 bg-[#39ff14]/10 border border-[#39ff14] text-[#39ff14] font-black uppercase text-[10px] tracking-widest hover:bg-[#39ff14] hover:text-black transition-all"
+              >
+                [ RETURN_TO_NET ]
+              </button>
             </motion.div>
           )}
         </div>

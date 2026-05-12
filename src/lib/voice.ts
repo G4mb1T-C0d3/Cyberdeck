@@ -1,191 +1,198 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 
 export const VOICE_PROFILES = [
-  { id: 'Kore', name: 'Alt (Classic)', desc: 'Sharp, street-smart netrunner' },
-  { id: 'Aoede', name: 'Digital Ghost', desc: 'Ethereal, melodic spirit' },
-  { id: 'Charite', name: 'Vixen', desc: 'Playful, teasing, and dangerous' },
-  { id: 'Baubo', name: 'Street Punk', desc: 'Fast, raw, and aggressive' },
-  { id: 'Iambe', name: 'Net Oracle', desc: 'Calm, cold, and calculating' },
+  { id: 'alt-classic', name: 'Alt (Classic)', desc: 'Sharp, street-smart netrunner' },
+  { id: 'ghost', name: 'Digital Ghost', desc: 'Ethereal, melodic spirit' },
+  { id: 'vixen', name: 'Vixen', desc: 'Playful, teasing, and dangerous' },
+  { id: 'punk', name: 'Street Punk', desc: 'Fast, raw, and aggressive' },
+  { id: 'oracle', name: 'Net Oracle', desc: 'Calm, cold, and calculating' },
 ];
 
 /**
- * Voice synthesis for ALT using Gemini TTS with native fallback
+ * Advanced Voice Engine for ALT
+ * Uses Gemini 3.1 Pro for high-quality TTS with rate limit protection
+ * Falls back to Web Speech API when limits are reached or API fails
  */
 class VoiceEngine {
-  private ai: GoogleGenAI | null = null;
-  private audioContext: AudioContext | null = null;
-  private currentSource: AudioBufferSourceNode | null = null;
-  private currentVoice: string = 'Kore';
+  private currentVoiceProfile: string = 'alt-classic';
   private synth: SpeechSynthesis | null = null;
-  private quotaCooldownUntil: number = 0;
-  private lastRequestTime: number = 0;
-  private readonly minDelay: number = 30000; // 30 seconds between requests for Pro free tier (2 RPM)
+  private voices: SpeechSynthesisVoice[] = [];
+  private ai: GoogleGenAI | null = null;
+  
+  // Rate limiting state
+  private rpmCounter: number[] = [];
+  private tpmCounter: { time: number, tokens: number }[] = [];
+  private rpdCounter: number[] = [];
+  
+  // Limits (Safe baseline for free tier)
+  private readonly MAX_RPM = 2; // Requests per minute
+  private readonly MAX_TPM = 30000; // Tokens per minute
+  private readonly MAX_RPD = 50; // Requests per day
 
   constructor() {
     if (typeof window !== "undefined") {
-      this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       this.synth = window.speechSynthesis;
-    }
-  }
-
-  private initAudio() {
-    if (!this.audioContext) {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      const loadVoices = () => {
+        this.voices = this.synth?.getVoices() || [];
+      };
+      loadVoices();
+      if (this.synth?.onvoiceschanged !== undefined) {
+        this.synth.onvoiceschanged = loadVoices;
+      }
+      
+      // Initialize Gemini
+      if (process.env.GEMINI_API_KEY) {
+        this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      }
     }
   }
 
   setVoice(voiceId: string) {
-    this.currentVoice = voiceId;
+    this.currentVoiceProfile = voiceId;
+  }
+
+  private checkRateLimits(text: string): boolean {
+    const now = Date.now();
+    const tokenEstimate = text.length / 4; // Very rough estimate
+
+    // Cleanup counters
+    this.rpmCounter = this.rpmCounter.filter(t => now - t < 60000);
+    this.tpmCounter = this.tpmCounter.filter(t => now - t.time < 60000);
+    this.rpdCounter = this.rpdCounter.filter(t => now - t < 86400000);
+
+    const currentRPM = this.rpmCounter.length;
+    const currentTPM = this.tpmCounter.reduce((acc, t) => acc + t.tokens, 0);
+    const currentRPD = this.rpdCounter.length;
+
+    if (currentRPM >= this.MAX_RPM || 
+        currentTPM + tokenEstimate >= this.MAX_TPM || 
+        currentRPD >= this.MAX_RPD) {
+      console.warn("ALT_VOICE: Gemini rate limit reached or near. Falling back to neural buffer (Native TTS).");
+      return false;
+    }
+
+    return true;
+  }
+
+  private recordGeminiRequest(text: string) {
+    const now = Date.now();
+    const tokenEstimate = text.length / 4;
+    this.rpmCounter.push(now);
+    this.tpmCounter.push({ time: now, tokens: tokenEstimate });
+    this.rpdCounter.push(now);
+  }
+
+  private getBestNativeVoice(profile: string): SpeechSynthesisVoice | null {
+    if (this.voices.length === 0) this.voices = this.synth?.getVoices() || [];
+    const enVoices = this.voices.filter(v => v.lang.startsWith('en'));
+    
+    switch (profile) {
+      case 'ghost':
+        return enVoices.find(v => /google|natural/i.test(v.name) && /female/i.test(v.name)) || 
+               enVoices.find(v => /victoria|serena/i.test(v.name)) || null;
+      case 'oracle':
+        return enVoices.find(v => /microsoft/i.test(v.name) && /zira/i.test(v.name)) || 
+               enVoices.find(v => /moira/i.test(v.name)) || null;
+      default:
+        // Alt-matching voices: Samantha, Anna, or anything young and sharp
+        return enVoices.find(v => /google/i.test(v.name) && /female/i.test(v.name)) ||
+               enVoices.find(v => /female/i.test(v.name)) || 
+               enVoices[0] || null;
+    }
   }
 
   private nativeSpeak(text: string) {
-    if (!this.synth) return;
+    if (!this.synth || !text) return;
     this.synth.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    const selectedVoice = this.getBestNativeVoice(this.currentVoiceProfile);
+    if (selectedVoice) utterance.voice = selectedVoice;
 
-    let processedText = text;
-    // Apply random text glitches for native fallback
-    if (Math.random() > 0.5) {
-        const words = text.split(' ');
-        const glitchedWords = words.map(word => {
-            if (Math.random() > 0.8) {
-                // Stutter
-                return `${word[0]}-${word[0]}-${word}`;
-            }
-            if (Math.random() > 0.9) {
-                // Emphasis/Glitch text
-                return word.toUpperCase();
-            }
-            return word;
-        });
-        processedText = glitchedWords.join(' ');
+    // Alt's profile characterization for native TTS
+    switch (this.currentVoiceProfile) {
+      case 'ghost': utterance.pitch = 0.8; utterance.rate = 0.85; break;
+      case 'punk': utterance.pitch = 1.3; utterance.rate = 1.3; break;
+      case 'oracle': utterance.pitch = 1.0; utterance.rate = 1.0; break;
+      case 'vixen': utterance.pitch = 1.4; utterance.rate = 1.2; break;
+      default: utterance.pitch = 1.25; utterance.rate = 1.15;
     }
-
-    const utterance = new SpeechSynthesisUtterance(processedText);
-    const voices = this.synth.getVoices();
-    
-    // Prioritize high-quality neural/natural female voices that tend to sound younger
-    // Samantha (Apple), Google UK English Female, Microsoft Zira, etc.
-    const femaleVoice = voices.find(v => 
-      /google/i.test(v.name) && /female/i.test(v.name) && /en-/i.test(v.lang)
-    ) || voices.find(v => 
-      /samantha|victoria|sara|anna|zira|karen/i.test(v.name)
-    ) || voices.find(v => 
-      /female/i.test(v.name)
-    );
-
-    if (femaleVoice) utterance.voice = femaleVoice;
-    
-    // Higher pitch and slightly faster rate to simulate a younger, high-energy profile
-    utterance.pitch = 1.25;
-    utterance.rate = 1.15;
-    utterance.volume = 1;
     
     this.synth.speak(utterance);
   }
 
+  private activeSource: AudioBufferSourceNode | null = null;
+  private audioCtx: AudioContext | null = null;
+
   async speak(text: string) {
     if (!text) return;
-    
-    // Check if we are in quota cooldown or if AI/Key is missing
-    const now = Date.now();
-    const isOfflineMode = now < this.quotaCooldownUntil;
-    const isThrottled = now - this.lastRequestTime < this.minDelay;
 
-    if (!this.ai || !process.env.GEMINI_API_KEY || isOfflineMode || isThrottled) {
-      if (isOfflineMode) console.warn("ALT is in offline voice mode due to API quota limits.");
-      if (isThrottled) console.warn(`ALT is in offline voice mode to respect free tier rate limits (${Math.ceil((this.minDelay - (now - this.lastRequestTime)) / 1000)}s remaining).`);
-      this.nativeSpeak(text);
-      return;
+    // Stop all current speech
+    if (this.synth) this.synth.cancel();
+    if (this.activeSource) {
+      try { this.activeSource.stop(); } catch(e) {}
+      this.activeSource = null;
     }
 
-    try {
-      this.initAudio();
-      this.lastRequestTime = Date.now();
-
-      const personalityPrompt = `[Character: Alt Cunningham]
-[Personality: 20-year-old female street-smart netrunner. High-energy, biting sarcasm, cynical, punchy delivery, sharp female attitude]
-[Instructions: Speak with a fast-paced, street-wise Night City accent. Be expressive and natural, not robotic. Use heavy sarcasm.]
-Text to speak: ${text}`;
-
-      if (this.currentSource) {
-        try { this.currentSource.stop(); } catch (e) {}
-        this.currentSource = null;
-      }
-
-      const response = await this.ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: [{ parts: [{ text: personalityPrompt }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: this.currentVoice },
+    // Try Gemini TTS first if available and within limits
+    if (this.ai && this.checkRateLimits(text)) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model: "gemini-3.1-pro-preview",
+          contents: [{ parts: [{ text: `Say with a sharp, netrunner edge: ${text}` }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: 'Kore' }, // Matches Alt's personality
+              },
             },
           },
-        },
-      });
+        });
 
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64Audio) {
-        const binaryString = window.atob(base64Audio);
-        const bytes = new Int16Array(binaryString.length / 2);
-        for (let i = 0; i < binaryString.length; i += 2) {
-          bytes[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i);
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (base64Audio) {
+          this.recordGeminiRequest(text);
+          this.playGeminiAudio(base64Audio);
+          return;
         }
-
-        const float32Data = new Float32Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) float32Data[i] = bytes[i] / 32768;
-
-        // Apply random audio glitching
-        if (Math.random() > 0.3) { // 70% chance of some level of glitching
-            const glitchCount = Math.floor(Math.random() * 5) + 1;
-            for (let g = 0; g < glitchCount; g++) {
-                const glitchType = Math.random();
-                if (glitchType > 0.6) {
-                    // Stutter: Copy a block of audio
-                    const blockSize = Math.floor(Math.random() * 2000) + 500;
-                    const start = Math.floor(Math.random() * (float32Data.length - blockSize * 2));
-                    const sourceBlock = float32Data.slice(start, start + blockSize);
-                    float32Data.set(sourceBlock, start + blockSize);
-                } else if (glitchType > 0.3) {
-                    // Silence/Drop: Zero out a block
-                    const dropSize = Math.floor(Math.random() * 1000) + 200;
-                    const start = Math.floor(Math.random() * (float32Data.length - dropSize));
-                    for (let i = 0; i < dropSize; i++) float32Data[start + i] = 0;
-                } else {
-                    // Static/Noise: Add random noise
-                    const noiseSize = Math.floor(Math.random() * 500) + 100;
-                    const start = Math.floor(Math.random() * (float32Data.length - noiseSize));
-                    for (let i = 0; i < noiseSize; i++) float32Data[start + i] += (Math.random() * 0.2 - 0.1);
-                }
-            }
-        }
-
-        const audioBuffer = this.audioContext!.createBuffer(1, float32Data.length, 24000);
-        audioBuffer.getChannelData(0).set(float32Data);
-
-        const source = this.audioContext!.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(this.audioContext!.destination);
-        this.currentSource = source;
-        source.start();
-        source.onended = () => { if (this.currentSource === source) this.currentSource = null; };
+      } catch (error) {
+        console.error("ALT_VOICE: Gemini TTS failed. Engaging legacy native interface.", error);
       }
-    } catch (error: any) {
-      // Specifically catch quota errors (429)
-      if (error?.message?.includes("429") || error?.status === 429 || error?.toString()?.includes("RESOURCE_EXHAUSTED")) {
-        console.warn("Gemini TTS Quota exceeded. Switching Alt to offline mode for 5 minutes.");
-        // Cooldown for 5 minutes
-        this.quotaCooldownUntil = Date.now() + 5 * 60 * 1000;
-      } else {
-        console.error("Gemini TTS Error, falling back to local synthesis:", error);
-      }
-      this.nativeSpeak(text);
     }
+
+    // Fallback to Native TTS
+    this.nativeSpeak(text);
+  }
+
+  private playGeminiAudio(base64Data: string) {
+    const audioContent = atob(base64Data);
+    const buffer = new Uint8Array(audioContent.length);
+    for (let i = 0; i < audioContent.length; i++) {
+        buffer[i] = audioContent.charCodeAt(i);
+    }
+    
+    if (!this.audioCtx) {
+      this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    const float32Data = new Float32Array(buffer.length / 2);
+    const view = new DataView(buffer.buffer);
+    for (let i = 0; i < float32Data.length; i++) {
+        float32Data[i] = view.getInt16(i * 2, true) / 32768.0;
+    }
+
+    const audioBuffer = this.audioCtx.createBuffer(1, float32Data.length, 24000);
+    audioBuffer.getChannelData(0).set(float32Data);
+    
+    const source = this.audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(this.audioCtx.destination);
+    source.start(0);
+    this.activeSource = source;
   }
 }
 
 export const altVoice = new VoiceEngine();
+
