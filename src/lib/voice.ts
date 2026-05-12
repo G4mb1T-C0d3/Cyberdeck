@@ -44,7 +44,26 @@ class VoiceEngine {
   private nativeSpeak(text: string) {
     if (!this.synth) return;
     this.synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
+
+    let processedText = text;
+    // Apply random text glitches for native fallback
+    if (Math.random() > 0.5) {
+        const words = text.split(' ');
+        const glitchedWords = words.map(word => {
+            if (Math.random() > 0.8) {
+                // Stutter
+                return `${word[0]}-${word[0]}-${word}`;
+            }
+            if (Math.random() > 0.9) {
+                // Emphasis/Glitch text
+                return word.toUpperCase();
+            }
+            return word;
+        });
+        processedText = glitchedWords.join(' ');
+    }
+
+    const utterance = new SpeechSynthesisUtterance(processedText);
     const voices = this.synth.getVoices();
     
     // Prioritize high-quality neural/natural female voices that tend to sound younger
@@ -119,6 +138,31 @@ Text to speak: ${text}`;
 
         const float32Data = new Float32Array(bytes.length);
         for (let i = 0; i < bytes.length; i++) float32Data[i] = bytes[i] / 32768;
+
+        // Apply random audio glitching
+        if (Math.random() > 0.3) { // 70% chance of some level of glitching
+            const glitchCount = Math.floor(Math.random() * 5) + 1;
+            for (let g = 0; g < glitchCount; g++) {
+                const glitchType = Math.random();
+                if (glitchType > 0.6) {
+                    // Stutter: Copy a block of audio
+                    const blockSize = Math.floor(Math.random() * 2000) + 500;
+                    const start = Math.floor(Math.random() * (float32Data.length - blockSize * 2));
+                    const sourceBlock = float32Data.slice(start, start + blockSize);
+                    float32Data.set(sourceBlock, start + blockSize);
+                } else if (glitchType > 0.3) {
+                    // Silence/Drop: Zero out a block
+                    const dropSize = Math.floor(Math.random() * 1000) + 200;
+                    const start = Math.floor(Math.random() * (float32Data.length - dropSize));
+                    for (let i = 0; i < dropSize; i++) float32Data[start + i] = 0;
+                } else {
+                    // Static/Noise: Add random noise
+                    const noiseSize = Math.floor(Math.random() * 500) + 100;
+                    const start = Math.floor(Math.random() * (float32Data.length - noiseSize));
+                    for (let i = 0; i < noiseSize; i++) float32Data[start + i] += (Math.random() * 0.2 - 0.1);
+                }
+            }
+        }
 
         const audioBuffer = this.audioContext!.createBuffer(1, float32Data.length, 24000);
         audioBuffer.getChannelData(0).set(float32Data);

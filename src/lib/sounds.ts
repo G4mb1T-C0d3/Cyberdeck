@@ -18,13 +18,6 @@ class SoundManager {
     }
   }
 
-  setVolume(level: number) {
-    this.initCtx();
-    if (this.masterGain) {
-      this.masterGain.gain.exponentialRampToValueAtTime(Math.max(0.001, level), this.ctx!.currentTime + 0.1);
-    }
-  }
-
   playBeep(freq = 800, duration = 0.1, type: OscillatorType = "square", volume = 0.1) {
     this.initCtx();
     if (!this.ctx || !this.masterGain) return;
@@ -48,22 +41,6 @@ class SoundManager {
   playType() {
     this.playBeep(1200, 0.03, "sine", 0.05);
   }
-
-  playError() {
-    this.playBeep(300, 0.2, "sawtooth", 0.15);
-    setTimeout(() => this.playBeep(200, 0.3, "sawtooth", 0.15), 50);
-  }
-
-  playGlitch() {
-    const count = 3 + Math.floor(Math.random() * 5);
-    for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-            this.playBeep(Math.random() * 3000 + 100, 0.02, i % 2 === 0 ? "square" : "sawtooth", 0.1);
-        }, i * 20);
-    }
-  }
-
-  // Pre-load assets queue logic can be added here if we had actual assets
 }
 
 export const sounds = new SoundManager();

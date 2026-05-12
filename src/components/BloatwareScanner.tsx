@@ -61,7 +61,7 @@ export const BloatwareScanner: React.FC<BloatwareScannerProps> = ({ onAddMessage
     setSelectedItems(results.map(i => i.id));
     setStage("review");
     onAddMessage(`Scan complete. Found ${results.length} Corpo daemons.`);
-    onCompanionMessage(`Look at all this junk, Remmy. Did you download the entire Arasaka trash bin or what?`);
+    onCompanionMessage(`Look at all this junk, Gambit. Did you download the entire Arasaka trash bin or what?`);
   };
 
   const handleRemove = () => {
@@ -88,7 +88,7 @@ export const BloatwareScanner: React.FC<BloatwareScannerProps> = ({ onAddMessage
           setTimeout(() => {
             setStage("done");
             onAddMessage(`BLOATWARE_SCRUB: FINALIZED.`, "system");
-            onCompanionMessage(`Clean as a whistle. Or at least as clean as your dusty deck is gonna get, Remmy.`);
+            onCompanionMessage(`Clean as a whistle. Or at least as clean as your dusty deck is gonna get, Gambit.`);
             setTimeout(onComplete, 2000);
           }, 1000);
         }

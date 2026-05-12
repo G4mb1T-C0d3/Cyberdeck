@@ -45,7 +45,7 @@ export const HackTerminal: React.FC<HackTerminalProps> = ({ glitch }) => {
     { text: '[+] CRACK_NC_OS SUCCESS: SHELL_CONNECTED', color: '#39ff14' },
     { text: 'meterpreter > hashdump', color: '#00f0ff' },
     { text: 'Administrator:500:CORPO_ADMIN_HASH_SHI...', color: '#39ff14' },
-    { text: 'Remmy:1001:aad3b435b51404eeaad3b435b51404ee:f7c6d6...ACCESS_GRANTED', color: '#39ff14' },
+    { text: 'Gambit:1001:aad3b435b51404eeaad3b435b51404ee:f7c6d6...ACCESS_GRANTED', color: '#39ff14' },
     { text: '', color: '#39ff14' },
     { text: 'root@Cr4ck3d_NC_OS:~# delta_v --force --NC_BYPASS', color: '#ff003c' }
   ];

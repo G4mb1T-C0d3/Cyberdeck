@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Activity, Trash2, ShieldAlert, Cpu, Home, Palette, Zap, ArrowDown, Database, Scan, Info, AlertTriangle, Volume2 } from "lucide-react";
-import { ToolType, TerminalMessage, ColorScheme, ScanProfile } from "./types";
+import { ToolType, TerminalMessage, ColorScheme } from "./types";
 import { Companion } from "./components/Companion";
 import { Terminal } from "./components/Terminal";
 import { BloatwareScanner } from "./components/BloatwareScanner";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { SynthwaveBackground } from "./components/SynthwaveBackground";
-import { NetInfo } from "./components/NetInfo";
 import { PersonalityProfile } from "./components/PersonalityProfile";
 import { HackTerminal } from "./components/HackTerminal";
 import { DaemonPopup } from "./components/DaemonPopup";
@@ -180,7 +179,6 @@ export default function App() {
     const glitchInterval = setInterval(() => {
       if (Math.random() > 0.85) {
         setGlitch(true);
-        // sounds.playGlitch(); // Removed as requested
         setTimeout(() => setGlitch(false), 150 + Math.random() * 200);
       }
     }, 4000);
@@ -189,14 +187,6 @@ export default function App() {
     addMessage("MONITORING_NEURAL_HEAP_USAGE...");
     addMessage("SYSTEM SCANNER v2.077 INITIALIZED.");
     addMessage("Targeting: MAULER_GANG_MEMBER.");
-    
-    // Alt's initial greeting
-    setTimeout(() => {
-        const greeting = "What's up choom, ya need somethin?";
-        setCompanionMsg(greeting);
-        addMessage(greeting, "companion", "system");
-        setTimeout(() => setCompanionMsg(""), 4000);
-    }, 1000);
     
     const interval = setInterval(() => {
       setStats(prev => ({
@@ -231,6 +221,17 @@ export default function App() {
         clearInterval(interval);
         clearInterval(commentInterval);
     };
+  }, []);
+
+  useEffect(() => {
+    // Alt's initial greeting
+    const timeout = setTimeout(() => {
+        const greeting = "What's up Gambit, you need something? Or should we start burning some corpo shit?";
+        setCompanionMsg(greeting);
+        addMessage(greeting, "companion", "system");
+        setTimeout(() => setCompanionMsg(""), 6000);
+    }, 1500);
+    return () => clearTimeout(timeout);
   }, []);
 
   const handleToolSelect = (tool: ToolType) => {
@@ -878,18 +879,4 @@ function QuickhackItem({ label, cost, status, active, onClick, color, desc }: { 
             )}
         </button>
     );
-}
-
-function StatLine({ label, val }: { label: string, val: number }) {
-  return (
-    <div className="flex justify-between items-center text-current">
-        <span>{label}_LOAD</span>
-        <div className="w-32 h-1 bg-current/20 relative">
-            <motion.div 
-                className="absolute inset-y-0 left-0 bg-current shadow-[0_0_5px_currentColor]" 
-                animate={{ width: `${val}%` }}
-            />
-        </div>
-    </div>
-  );
 }
